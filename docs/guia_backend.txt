@@ -1,0 +1,381 @@
+GUIA PARA CRIAR O BACKEND SEPARADO - PSYCHOLOGY PROJECT
+Versao do contrato: 1.0
+
+======================================================================
+1. OBJETIVO E ESCOPO
+======================================================================
+
+Este arquivo especifica um backend independente do Flutter, servido por API
+REST JSON. Ele deve cuidar de autenticacao, profissionais, pacientes, agenda,
+historico, sessoes, notas clinicas, pagamentos e resumo da home.
+
+Stack recomendada (o contrato nao depende dela):
+- Node.js LTS + TypeScript + NestJS;
+- PostgreSQL + Prisma ORM;
+- JWT, Argon2id, Swagger/OpenAPI;
+- Docker Compose, Jest e Supertest.
+
+======================================================================
+2. DECISOES FECHADAS
+======================================================================
+
+- UUID em todas as entidades publicas.
+- TIMESTAMPTZ para eventos; DATE para nascimento; NUMERIC(12,2) para dinheiro.
+- JSON em camelCase; banco em snake_case.
+- Soft delete para usuarios e pacientes.
+- Unificar appointments e schedule_calendar em appointments.
+- ScheduleCalendarModel sera uma representacao de Appointment na API.
+- owner_user_id define o profissional dono de cada registro.
+- Toda consulta privada deve filtrar pelo usuario obtido do JWT.
+- Senhas, tokens e notas clinicas nunca entram em logs.
+- Datas da API usam ISO 8601 com timezone.
+
+======================================================================
+3. ESTRUTURA DO NOVO REPOSITORIO
+======================================================================
+
+psychology-backend/
+  src/
+    common/       auth, errors, guards, pagination, validation
+    config/
+    database/
+    modules/
+      auth/
+      users/
+      patients/
+      appointments/
+      patient-history/
+      sessions/
+      clinical-notes/
+      payments/
+      consultations/
+      home/
+  migrations/ ou prisma/
+  test/
+  .env.example
+  docker-compose.yml
+  Dockerfile
+  README.md
+
+Cada modulo deve separar controller/route, service/use case, repository,
+request DTO, response DTO e mapper.
+
+Variaveis minimas:
+APP_ENV=development
+PORT=3000
+API_PREFIX=/api/v1
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/psychology
+JWT_ACCESS_SECRET=segredo_forte
+JWT_REFRESH_SECRET=outro_segredo_forte
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=30d
+CORS_ORIGINS=http://localhost:8080
+CLINICAL_NOTES_ENCRYPTION_KEY=chave_fora_do_codigo
+
+======================================================================
+4. MODELO POSTGRESQL
+======================================================================
+
+Ativar pgcrypto e usar DEFAULT gen_random_uuid(). Todas as tabelas de negocio
+devem ter created_at e updated_at com TIMESTAMPTZ DEFAULT NOW().
+
+users
+- id UUID PK
+- name VARCHAR(150) NOT NULL
+- email VARCHAR(254) NOT NULL
+- password_hash TEXT NOT NULL
+- plan VARCHAR(50) NULL
+- role VARCHAR(30) NOT NULL DEFAULT 'professional'
+- is_active BOOLEAN NOT NULL DEFAULT TRUE
+- deleted_at TIMESTAMPTZ NULL
+- indice UNIQUE em LOWER(email) para registros nao excluidos
+- roles: admin, professional
+
+refresh_tokens
+- id UUID PK
+- user_id UUID FK users NOT NULL
+- token_hash TEXT UNIQUE NOT NULL
+- expires_at TIMESTAMPTZ NOT NULL
+- revoked_at TIMESTAMPTZ NULL
+- ip_address INET NULL
+- user_agent TEXT NULL
+- guardar somente hash do refresh token
+
+patients
+- id UUID PK
+- owner_user_id UUID FK users NOT NULL
+- name VARCHAR(150) NOT NULL
+- phone VARCHAR(30) NOT NULL
+- email VARCHAR(254) NULL
+- status VARCHAR(20) NOT NULL DEFAULT 'active'
+- cpf VARCHAR(14) NULL
+- date_of_birth DATE NULL
+- gender VARCHAR(30) NULL
+- avatar_url TEXT NULL
+- cep VARCHAR(9), city VARCHAR(100), neighborhood VARCHAR(100)
+- state_code CHAR(2), street VARCHAR(150)
+- address_number VARCHAR(20), complement VARCHAR(100)
+- is_active BOOLEAN NOT NULL DEFAULT TRUE
+- deleted_at TIMESTAMPTZ NULL
+- indices: (owner_user_id,status), (owner_user_id,name)
+- UNIQUE (owner_user_id,cpf) quando cpf nao for nulo e paciente estiver ativo
+
+appointments
+- id UUID PK
+- owner_user_id UUID FK users NOT NULL
+- patient_id UUID FK patients NOT NULL
+- starts_at TIMESTAMPTZ NOT NULL
+- ends_at TIMESTAMPTZ NOT NULL
+- status VARCHAR(20) NOT NULL DEFAULT 'pending'
+- description TEXT NOT NULL DEFAULT ''
+- cancellation_reason TEXT NULL
+- confirmed_at, cancelled_at TIMESTAMPTZ NULL
+- CHECK ends_at > starts_at
+- status: pending, confirmed, completed, cancelled
+- indice: (owner_user_id,starts_at,status)
+- nao duplicar patientName/avatarUrl; retornar por JOIN
+
+patient_history
+- id UUID PK
+- owner_user_id UUID FK users NOT NULL
+- patient_id UUID FK patients NOT NULL
+- title VARCHAR(180) NOT NULL
+- description TEXT NOT NULL
+- professional_name VARCHAR(150) NOT NULL
+- occurred_at TIMESTAMPTZ NOT NULL
+- status VARCHAR(20) NOT NULL
+- status compativel: completed, pending, cancelled
+- indice: (owner_user_id,patient_id,occurred_at DESC)
+
+sessions
+- id UUID PK
+- owner_user_id UUID FK users NOT NULL
+- patient_id UUID FK patients NOT NULL
+- appointment_id UUID FK appointments NULL
+- starts_at TIMESTAMPTZ NOT NULL
+- ends_at TIMESTAMPTZ NULL
+- status VARCHAR(20) NOT NULL DEFAULT 'scheduled'
+- status: scheduled, in_progress, completed, cancelled
+
+clinical_notes
+- id UUID PK
+- owner_user_id UUID FK users NOT NULL
+- session_id UUID FK sessions NOT NULL
+- encrypted_content TEXT NOT NULL
+- encryption_version SMALLINT NOT NULL DEFAULT 1
+- criptografar com algoritmo autenticado, como AES-256-GCM
+
+payments
+- id UUID PK
+- owner_user_id UUID FK users NOT NULL
+- session_id UUID FK sessions NOT NULL
+- amount NUMERIC(12,2) NOT NULL CHECK amount >= 0
+- status VARCHAR(20) NOT NULL DEFAULT 'pending'
+- due_at, paid_at TIMESTAMPTZ NULL
+- payment_method VARCHAR(30) NULL
+- status: pending, paid, overdue, cancelled, refunded
+
+consultations
+- id UUID PK
+- owner_user_id UUID FK users NOT NULL
+- patient_id UUID FK patients NULL
+- title VARCHAR(180), doctor VARCHAR(150), location VARCHAR(180) NOT NULL
+- scheduled_at TIMESTAMPTZ NOT NULL
+- status VARCHAR(20) NOT NULL
+- diagnosis TEXT NOT NULL DEFAULT ''
+
+audit_logs
+- id UUID PK
+- owner_user_id, actor_user_id UUID FK users NULL
+- entity_type VARCHAR(50), action VARCHAR(30) NOT NULL
+- entity_id UUID NULL
+- metadata JSONB NOT NULL DEFAULT '{}'
+- ip_address INET NULL
+- created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+======================================================================
+5. PADRAO HTTP E JSON
+======================================================================
+
+Base local: http://localhost:3000/api/v1
+Header privado: Authorization: Bearer <accessToken>
+
+Item:  { "data": { } }
+Lista: { "data": [], "meta": { "page":1, "limit":20,
+         "total":0, "totalPages":0 } }
+Erro:  { "error": { "code":"VALIDATION_ERROR",
+         "message":"Dados invalidos.", "details":[], "requestId":"uuid" } }
+
+Codigos: 200 leitura/alteracao; 201 criacao; 204 exclusao/logout;
+400 validacao; 401 token; 403 permissao; 404 inexistente; 409 conflito;
+422 regra de negocio; 429 limite; 500 erro interno sem detalhe sensivel.
+
+Query params: page, limit (max 100), q, sortBy, sortOrder, status,
+dateFrom e dateTo.
+
+======================================================================
+6. ENDPOINTS E CONTRATOS PRINCIPAIS
+======================================================================
+
+AUTH
+- POST /auth/register {name,email,password}
+- POST /auth/login {email,password}
+- POST /auth/refresh {refreshToken}; rotacionar e invalidar o anterior
+- POST /auth/logout {refreshToken}; retorna 204
+- GET /auth/me
+- POST /auth/forgot-password {email}; resposta sempre generica
+- POST /auth/reset-password {token,newPassword}
+
+Login response em data:
+{
+  "accessToken":"string", "refreshToken":"string", "expiresIn":900,
+  "user":{"id":"uuid","name":"Ana","email":"ana@exemplo.com",
+          "role":"professional"}
+}
+
+USERS
+- GET /users (admin), GET /users/:id, POST /users (admin)
+- PATCH /users/:id, DELETE /users/:id (soft delete)
+- nunca aceitar/devolver passwordHash no contrato publico
+
+PATIENTS
+- GET /patients?page=1&limit=20&q=&status=active
+- GET /patients/:id
+- POST /patients, PATCH /patients/:id, DELETE /patients/:id
+- GET /patients/search?q= pode existir como alias de /patients?q=
+
+Lista compativel com PatientModel:
+{"id":"uuid","userId":"owner uuid","nome":"Marina","telefone":"...",
+ "email":"...","status":"active"}
+
+Detalhe compativel com PatientDetailsModel acrescenta:
+cpf, dateOfBirth, gender, cep, city, neighborhood, stateOfCountry, address,
+number, complement, createdAt, updatedAt e isActive.
+No POST, owner_user_id sempre vem do JWT, nunca do body.
+
+APPOINTMENTS / SCHEDULE
+- GET /appointments e GET /appointments/:id
+- POST /appointments, PATCH /appointments/:id
+- PATCH /appointments/:id/confirm
+- PATCH /appointments/:id/cancel {reason}
+
+Criacao:
+{"patientId":"uuid","startsAt":"2026-06-22T14:00:00-03:00",
+ "endsAt":"2026-06-22T15:00:00-03:00","description":"Sessao"}
+
+Resposta adaptada ao Flutter:
+{"id":"uuid","patientId":"uuid","patientName":"Marina",
+ "date":"2026-06-22","startHour":"14:00","endHour":"15:00",
+ "status":"confirmado","dateTime":"2026-06-22T14:00:00-03:00",
+ "description":"Sessao","isConfirmed":true,"avatarUrl":null}
+
+Mapeamento: pending->pendente, confirmed->confirmado, completed->concluido.
+O Flutter precisa adicionar cancelled ao enum; ate la, omitir cancelados da
+agenda principal. Manter aliases /schedule para os repositories atuais.
+
+PATIENT HISTORY
+- GET/POST /patients/:patientId/history
+- PATCH/DELETE /history/:id
+- payload: title, description, professional, date ISO e status
+
+SESSIONS
+- GET /sessions, GET/PATCH /sessions/:id, POST /sessions
+- GET /patients/:patientId/sessions
+- campos: patientId, appointmentId, startsAt, endsAt, status
+
+CLINICAL NOTES
+- GET/POST /sessions/:sessionId/notes
+- PATCH/DELETE /notes/:id
+- request publico: {"content":"texto clinico"}
+- criptografar no service; descriptografar apenas para usuario autorizado;
+- auditar leitura e alteracao; nunca registrar content no log
+
+PAYMENTS
+- GET /payments, GET/PATCH /payments/:id, POST /payments
+- GET /sessions/:sessionId/payments
+- amount deve ser string decimal no JSON, por exemplo "250.00"
+
+CONSULTATIONS
+- GET /consultations, GET/PATCH/DELETE /consultations/:id
+- POST /consultations
+
+HOME
+- GET /home/activity?limit=10, compativel com ActivityPatient
+- GET /home/summary
+- summary: todayAppointments, pendingAppointments, pendingPayments (string)
+  e activityCount
+
+HEALTH
+- GET /health/live: processo ativo
+- GET /health/ready: PostgreSQL e dependencias essenciais respondendo
+
+======================================================================
+7. REGRAS, SEGURANCA E TESTES
+======================================================================
+
+Validacoes:
+- normalizar email; validar CPF; armazenar telefone/CEP sem mascara;
+- nascimento nao pode estar no futuro;
+- validar UUIDs, limites de texto, datas e transicoes de status;
+- paciente e todos os recursos relacionados devem pertencer ao owner do JWT;
+- impedir conflito de horario do profissional e retornar HTTP 409 com
+  code APPOINTMENT_TIME_CONFLICT;
+- usar transacao em criacoes relacionadas, conclusao de sessao, pagamento e
+  rotacao de refresh token.
+
+Seguranca:
+- HTTPS, Argon2id, access token curto e refresh rotativo;
+- rate limit em login/reset; CORS restrito; queries parametrizadas;
+- segredos fora do repositorio; usuario PostgreSQL com menor privilegio;
+- backups criptografados e restauracao testada;
+- logs estruturados sem token, senha, CPF integral ou dados clinicos;
+- auditoria e politica de retencao alinhadas a LGPD e orientacao juridica.
+
+Testes obrigatorios:
+- login valido/invalido, refresh e revogacao;
+- usuario A nao acessa dados do usuario B;
+- CRUD e soft delete de paciente;
+- conflito, confirmacao e cancelamento de agenda;
+- constraints e transacoes em PostgreSQL real de teste;
+- nota clinica nao aparece em logs/erros;
+- paginacao, filtros, status e envelope de erro.
+
+======================================================================
+8. ORDEM DE IMPLEMENTACAO
+======================================================================
+
+1. Repositorio, Docker, PostgreSQL, migrations e health checks.
+2. Configuracao, validacao, erros, logs e Swagger.
+3. Users, refresh_tokens, login, refresh, logout e guard JWT.
+4. Patients com isolamento por owner.
+5. Appointments e aliases /schedule.
+6. Patient history.
+7. Home activity e summary.
+8. Sessions e clinical notes com criptografia/auditoria.
+9. Payments e consultations.
+10. Testes, observabilidade, backups e homologacao.
+11. Integrar o Flutter e remover mocks de forma gradual.
+
+Definition of done de cada modulo:
+- migration reversivel, indices e constraints;
+- DTOs, validacao, controller, service, repository e mapper;
+- autorizacao por owner; erros padronizados; Swagger;
+- testes unitarios/integracao e nenhum dado sensivel no log.
+
+======================================================================
+9. AJUSTES NECESSARIOS NO FLUTTER
+======================================================================
+
+- Corrigir ou mapear plane (Flutter) para plan (backend).
+- Adicionar cancelled a AppointmentStatus.
+- Unificar AppointmentRepository e AppointmentsRepository.
+- Tratar AppointmentModel e ScheduleCalendarModel como visoes da mesma entidade.
+- ApiClient deve extrair o envelope data/meta antes de chamar fromJson.
+- Configurar API_BASE_URL por ambiente e Bearer token nas rotas privadas.
+- Ao receber 401 por expiracao, renovar uma unica vez e repetir a requisicao.
+- Manter mocks disponiveis para desenvolvimento/testes offline.
+
+Ao concluir os itens 1 a 7 da ordem de implementacao, o Flutter ja podera usar
+login, pacientes, agenda, historico e home sem depender dos mocks.
+
+FIM DO GUIA.
