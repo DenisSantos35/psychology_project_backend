@@ -1,0 +1,385 @@
+PSYCOLOGI API - GUIA PARA INSOMNIA
+==================================
+
+1. AMBIENTE
+-----------
+
+Crie um Environment no Insomnia:
+
+{
+  "base_url": "http://localhost:3000/api/v1",
+  "health_url": "http://localhost:3000",
+  "access_token": "",
+  "refresh_token": "",
+  "user_id": "",
+  "patient_id": "",
+  "appointment_id": "",
+  "history_id": "",
+  "session_id": "",
+  "note_id": "",
+  "payment_id": "",
+  "consultation_id": ""
+}
+
+Se o PORT da sua .env for 3333, troque 3000 por 3333.
+
+Headers para rotas privadas:
+Authorization: Bearer {{ _.access_token }}
+Content-Type: application/json
+
+Todas as respostas usam o envelope "data". Listas também retornam "meta".
+
+
+2. HEALTH CHECKS
+----------------
+
+GET {{ _.health_url }}/health/live
+
+GET {{ _.health_url }}/health/ready
+
+
+3. AUTENTICAÇÃO
+---------------
+
+POST {{ _.base_url }}/auth/register
+Body JSON:
+{
+  "name": "Ana Souza",
+  "cpf": "52998224725",
+  "dateOfBirth": "1990-01-01",
+  "gender": "female",
+  "phone": "11999999999",
+  "email": "ana@email.com",
+  "address": {
+    "cep": "01001000",
+    "street": "Praca da Se",
+    "neighborhood": "Se",
+    "city": "Sao Paulo",
+    "stateCode": "SP",
+    "number": "100",
+    "complement": "Sala 2"
+  },
+  "professionalType": "psychologist",
+  "professionalLicense": "CRP-12/990321",
+  "specialty": "Psicologia Clinica",
+  "password": "Senha@123",
+  "confirmPassword": "Senha@123"
+}
+
+POST {{ _.base_url }}/auth/login
+Body JSON:
+{
+  "email": "ana@example.com",
+  "password": "SenhaForte@123"
+}
+
+Copie accessToken e refreshToken da resposta para o Environment.
+
+POST {{ _.base_url }}/auth/refresh
+Body JSON:
+{
+  "refreshToken": "{{ _.refresh_token }}"
+}
+
+POST {{ _.base_url }}/auth/logout
+Header privado obrigatório.
+
+GET {{ _.base_url }}/auth/me
+Header privado obrigatório.
+
+POST {{ _.base_url }}/auth/forgot-password
+Body JSON:
+{
+  "email": "ana@example.com"
+}
+
+
+4. USUÁRIOS
+-----------
+
+GET {{ _.base_url }}/users
+Somente administradores.
+
+GET {{ _.base_url }}/users/{{ _.user_id }}
+
+PATCH {{ _.base_url }}/users/{{ _.user_id }}
+Body JSON:
+{
+  "name": "Ana Souza",
+  "plan": "professional"
+}
+
+DELETE {{ _.base_url }}/users/{{ _.user_id }}
+Realiza soft delete.
+
+
+5. AJUSTES DO PROFISSIONAL
+--------------------------
+
+GET {{ _.base_url }}/professional-profiles/me
+Header privado obrigatório.
+
+PATCH {{ _.base_url }}/professional-profiles/me
+Body JSON, envie somente os campos alterados:
+{
+  "name": "Ana Souza",
+  "email": "novo@email.com",
+  "phone": "(11) 98888-7777",
+  "specialty": "Psicologia Comportamental",
+  "address": {
+    "cep": "01001-000",
+    "stateCode": "sp",
+    "complement": "Sala 3"
+  }
+}
+
+Não podem ser alterados por essa rota: role, plan, isActive, userId, cpf,
+createdAt e avatarUrl.
+
+
+6. PACIENTES
+------------
+
+GET {{ _.base_url }}/patients?page=1&limit=20&q=&status=active
+
+GET {{ _.base_url }}/patients/search?q=Marina
+
+GET {{ _.base_url }}/patients/{{ _.patient_id }}
+
+POST {{ _.base_url }}/patients
+Body JSON:
+{
+  "nome": "Marina Silva",
+  "telefone": "11999998888",
+  "email": "marina@example.com",
+  "status": "active",
+  "cpf": "12345678900",
+  "dateOfBirth": "1990-05-20",
+  "gender": "female",
+  "cep": "01001000",
+  "city": "São Paulo",
+  "neighborhood": "Centro",
+  "stateOfCountry": "SP",
+  "address": "Praça da Sé",
+  "number": "100",
+  "complement": "Apto 10"
+}
+
+PATCH {{ _.base_url }}/patients/{{ _.patient_id }}
+Body JSON, envie somente os campos alterados:
+{
+  "telefone": "11988887777",
+  "status": "active"
+}
+
+DELETE {{ _.base_url }}/patients/{{ _.patient_id }}
+Realiza soft delete.
+
+
+6. AGENDAMENTOS / AGENDA
+------------------------
+
+GET {{ _.base_url }}/appointments?page=1&limit=20
+
+Filtros opcionais:
+GET {{ _.base_url }}/appointments?status=pending&dateFrom=2026-06-01T00:00:00-03:00&dateTo=2026-06-30T23:59:59-03:00
+
+GET {{ _.base_url }}/appointments/{{ _.appointment_id }}
+
+POST {{ _.base_url }}/appointments
+Body JSON:
+{
+  "patientId": "{{ _.patient_id }}",
+  "startsAt": "2026-06-22T14:00:00-03:00",
+  "endsAt": "2026-06-22T15:00:00-03:00",
+  "description": "Sessão de acompanhamento"
+}
+
+PATCH {{ _.base_url }}/appointments/{{ _.appointment_id }}
+Body JSON:
+{
+  "startsAt": "2026-06-22T15:00:00-03:00",
+  "endsAt": "2026-06-22T16:00:00-03:00",
+  "description": "Horário reagendado"
+}
+
+PATCH {{ _.base_url }}/appointments/{{ _.appointment_id }}/confirm
+Sem body.
+
+PATCH {{ _.base_url }}/appointments/{{ _.appointment_id }}/cancel
+Body JSON:
+{
+  "reason": "Solicitação do paciente"
+}
+
+As mesmas rotas podem usar /schedule no lugar de /appointments.
+Status internos: pending, confirmed, completed, cancelled.
+
+
+7. HISTÓRICO DO PACIENTE
+------------------------
+
+GET {{ _.base_url }}/patients/{{ _.patient_id }}/history
+
+POST {{ _.base_url }}/patients/{{ _.patient_id }}/history
+Body JSON:
+{
+  "title": "Evolução clínica",
+  "description": "Paciente apresentou melhora durante o acompanhamento.",
+  "professional": "Ana Psicóloga",
+  "date": "2026-06-22T14:00:00-03:00",
+  "status": "completed"
+}
+
+PATCH {{ _.base_url }}/history/{{ _.history_id }}
+Body JSON:
+{
+  "title": "Evolução clínica atualizada",
+  "status": "completed"
+}
+
+DELETE {{ _.base_url }}/history/{{ _.history_id }}
+
+
+8. SESSÕES
+----------
+
+GET {{ _.base_url }}/sessions?page=1&limit=20
+
+GET {{ _.base_url }}/sessions/{{ _.session_id }}
+
+GET {{ _.base_url }}/patients/{{ _.patient_id }}/sessions
+
+POST {{ _.base_url }}/sessions
+Body JSON:
+{
+  "patientId": "{{ _.patient_id }}",
+  "appointmentId": "{{ _.appointment_id }}",
+  "startsAt": "2026-06-22T14:00:00-03:00",
+  "endsAt": "2026-06-22T15:00:00-03:00",
+  "status": "scheduled"
+}
+
+PATCH {{ _.base_url }}/sessions/{{ _.session_id }}
+Body JSON:
+{
+  "status": "completed",
+  "endsAt": "2026-06-22T15:00:00-03:00"
+}
+
+Status: scheduled, in_progress, completed, cancelled.
+
+
+9. NOTAS CLÍNICAS
+-----------------
+
+GET {{ _.base_url }}/sessions/{{ _.session_id }}/notes
+
+POST {{ _.base_url }}/sessions/{{ _.session_id }}/notes
+Body JSON:
+{
+  "content": "Conteúdo clínico confidencial do atendimento."
+}
+
+PATCH {{ _.base_url }}/notes/{{ _.note_id }}
+Body JSON:
+{
+  "content": "Conteúdo clínico atualizado."
+}
+
+DELETE {{ _.base_url }}/notes/{{ _.note_id }}
+
+O conteúdo é criptografado no backend antes de ser armazenado.
+
+
+10. PAGAMENTOS
+--------------
+
+GET {{ _.base_url }}/payments?page=1&limit=20&status=pending
+
+GET {{ _.base_url }}/payments/{{ _.payment_id }}
+
+GET {{ _.base_url }}/sessions/{{ _.session_id }}/payments
+
+POST {{ _.base_url }}/payments
+Body JSON:
+{
+  "sessionId": "{{ _.session_id }}",
+  "amount": "250.00",
+  "status": "pending",
+  "dueAt": "2026-06-25T12:00:00-03:00",
+  "paymentMethod": "pix"
+}
+
+PATCH {{ _.base_url }}/payments/{{ _.payment_id }}
+Body JSON:
+{
+  "status": "paid",
+  "paidAt": "2026-06-23T10:30:00-03:00",
+  "paymentMethod": "pix"
+}
+
+Status: pending, paid, overdue, cancelled, refunded.
+amount deve ser enviado como string decimal.
+
+
+11. CONSULTAS
+-------------
+
+GET {{ _.base_url }}/consultations?page=1&limit=20
+
+GET {{ _.base_url }}/consultations/{{ _.consultation_id }}
+
+POST {{ _.base_url }}/consultations
+Body JSON:
+{
+  "patientId": "{{ _.patient_id }}",
+  "title": "Avaliação médica",
+  "doctor": "Dr. Carlos",
+  "location": "Clínica Central",
+  "scheduledAt": "2026-07-01T09:00:00-03:00",
+  "status": "scheduled",
+  "diagnosis": ""
+}
+
+PATCH {{ _.base_url }}/consultations/{{ _.consultation_id }}
+Body JSON:
+{
+  "status": "completed",
+  "diagnosis": "Diagnóstico informado pelo profissional."
+}
+
+DELETE {{ _.base_url }}/consultations/{{ _.consultation_id }}
+
+
+12. HOME
+--------
+
+GET {{ _.base_url }}/home/activity?limit=10
+
+GET {{ _.base_url }}/home/summary
+
+Resumo esperado:
+{
+  "data": {
+    "todayAppointments": 0,
+    "pendingAppointments": 0,
+    "pendingPayments": "0.00",
+    "activityCount": 0
+  }
+}
+
+
+13. ORDEM RECOMENDADA PARA TESTE
+--------------------------------
+
+1. GET /health/live
+2. GET /health/ready
+3. POST /auth/register
+4. Confirme o email no Supabase, se a confirmação estiver habilitada
+5. POST /auth/login
+6. Salve accessToken, refreshToken e user.id no Environment
+7. POST /patients e salve patient.id
+8. POST /appointments e salve appointment.id
+9. POST /sessions e salve session.id
+10. Teste histórico, notas, pagamentos, consultas e home

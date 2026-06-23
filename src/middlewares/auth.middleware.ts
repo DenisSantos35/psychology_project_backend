@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { supabase } from "../config/supabase";
+import { prisma } from "../database/prisma";
 
 export async function authenticate(
   request: Request,
@@ -17,6 +18,15 @@ export async function authenticate(
   const { data, error } = await supabase.auth.getUser(token);
 
   if (error || !data.user) {
+    response.status(401).json({ message: "Token inválido ou expirado" });
+    return;
+  }
+
+  const profile = await prisma.user.findUnique({
+    where: { id: data.user.id },
+    select: { isActive: true, deletedAt: true },
+  });
+  if (!profile?.isActive || profile.deletedAt) {
     response.status(401).json({ message: "Token inválido ou expirado" });
     return;
   }

@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabasePublishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabasePublishableKey) {
   throw new Error("SUPABASE_URL e SUPABASE_PUBLISHABLE_KEY devem estar configuradas");
@@ -13,3 +14,9 @@ export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
     persistSession: false,
   },
 });
+
+export const supabaseAdmin = supabaseServiceRoleKey
+  ? createClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+  : null;

@@ -1,0 +1,129 @@
+{
+  "info": {
+    "name": "Psycologi API",
+    "description": "Collection para importar no Thunder Client. Preencha access_token e os IDs após criar os recursos.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }] },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3333/api/v1" },
+    { "key": "health_url", "value": "http://localhost:3333" },
+    { "key": "access_token", "value": "" },
+    { "key": "refresh_token", "value": "" },
+    { "key": "user_id", "value": "" },
+    { "key": "patient_id", "value": "" },
+    { "key": "appointment_id", "value": "" },
+    { "key": "history_id", "value": "" },
+    { "key": "session_id", "value": "" },
+    { "key": "note_id", "value": "" },
+    { "key": "payment_id", "value": "" },
+    { "key": "consultation_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        { "name": "Live", "request": { "auth": { "type": "noauth" }, "method": "GET", "url": "{{health_url}}/health/live" } },
+        { "name": "Ready", "request": { "auth": { "type": "noauth" }, "method": "GET", "url": "{{health_url}}/health/ready" } }
+      ]
+    },
+    {
+      "name": "Autenticação",
+      "item": [
+        { "name": "Registrar", "request": { "auth": { "type": "noauth" }, "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Ana Psicóloga\",\n  \"email\": \"ana@example.com\",\n  \"password\": \"SenhaForte@123\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/auth/register" } },
+        { "name": "Login", "request": { "auth": { "type": "noauth" }, "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"ana@example.com\",\n  \"password\": \"SenhaForte@123\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/auth/login" } },
+        { "name": "Renovar token", "request": { "auth": { "type": "noauth" }, "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/auth/refresh" } },
+        { "name": "Logout", "request": { "method": "POST", "url": "{{base_url}}/auth/logout" } },
+        { "name": "Meu perfil", "request": { "method": "GET", "url": "{{base_url}}/auth/me" } },
+        { "name": "Esqueci a senha", "request": { "auth": { "type": "noauth" }, "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"ana@example.com\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/auth/forgot-password" } }
+      ]
+    },
+    {
+      "name": "Usuários",
+      "item": [
+        { "name": "Listar", "request": { "method": "GET", "url": "{{base_url}}/users" } },
+        { "name": "Buscar por ID", "request": { "method": "GET", "url": "{{base_url}}/users/{{user_id}}" } },
+        { "name": "Atualizar", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Ana Souza\",\n  \"plan\": \"professional\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/users/{{user_id}}" } },
+        { "name": "Excluir", "request": { "method": "DELETE", "url": "{{base_url}}/users/{{user_id}}" } }
+      ]
+    },
+    {
+      "name": "Pacientes",
+      "item": [
+        { "name": "Listar", "request": { "method": "GET", "url": "{{base_url}}/patients?page=1&limit=20&q=&status=active" } },
+        { "name": "Pesquisar", "request": { "method": "GET", "url": "{{base_url}}/patients/search?q=Marina" } },
+        { "name": "Buscar por ID", "request": { "method": "GET", "url": "{{base_url}}/patients/{{patient_id}}" } },
+        { "name": "Criar", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"nome\": \"Marina Silva\",\n  \"telefone\": \"11999998888\",\n  \"email\": \"marina@example.com\",\n  \"status\": \"active\",\n  \"cpf\": \"12345678900\",\n  \"dateOfBirth\": \"1990-05-20\",\n  \"gender\": \"female\",\n  \"cep\": \"01001000\",\n  \"city\": \"São Paulo\",\n  \"neighborhood\": \"Centro\",\n  \"stateOfCountry\": \"SP\",\n  \"address\": \"Praça da Sé\",\n  \"number\": \"100\",\n  \"complement\": \"Apto 10\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/patients" } },
+        { "name": "Atualizar", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"telefone\": \"11988887777\",\n  \"status\": \"active\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/patients/{{patient_id}}" } },
+        { "name": "Excluir", "request": { "method": "DELETE", "url": "{{base_url}}/patients/{{patient_id}}" } }
+      ]
+    },
+    {
+      "name": "Agendamentos",
+      "item": [
+        { "name": "Listar", "request": { "method": "GET", "url": "{{base_url}}/appointments?page=1&limit=20" } },
+        { "name": "Listar com filtros", "request": { "method": "GET", "url": "{{base_url}}/appointments?status=pending&dateFrom=2026-06-01T00:00:00-03:00&dateTo=2026-06-30T23:59:59-03:00" } },
+        { "name": "Buscar por ID", "request": { "method": "GET", "url": "{{base_url}}/appointments/{{appointment_id}}" } },
+        { "name": "Criar", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"patientId\": \"{{patient_id}}\",\n  \"startsAt\": \"2026-06-22T14:00:00-03:00\",\n  \"endsAt\": \"2026-06-22T15:00:00-03:00\",\n  \"description\": \"Sessão de acompanhamento\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/appointments" } },
+        { "name": "Atualizar", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"startsAt\": \"2026-06-22T15:00:00-03:00\",\n  \"endsAt\": \"2026-06-22T16:00:00-03:00\",\n  \"description\": \"Horário reagendado\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/appointments/{{appointment_id}}" } },
+        { "name": "Confirmar", "request": { "method": "PATCH", "url": "{{base_url}}/appointments/{{appointment_id}}/confirm" } },
+        { "name": "Cancelar", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Solicitação do paciente\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/appointments/{{appointment_id}}/cancel" } }
+      ]
+    },
+    {
+      "name": "Histórico",
+      "item": [
+        { "name": "Listar do paciente", "request": { "method": "GET", "url": "{{base_url}}/patients/{{patient_id}}/history" } },
+        { "name": "Criar", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"title\": \"Evolução clínica\",\n  \"description\": \"Paciente apresentou melhora durante o acompanhamento.\",\n  \"professional\": \"Ana Psicóloga\",\n  \"date\": \"2026-06-22T14:00:00-03:00\",\n  \"status\": \"completed\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/patients/{{patient_id}}/history" } },
+        { "name": "Atualizar", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"title\": \"Evolução clínica atualizada\",\n  \"status\": \"completed\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/history/{{history_id}}" } },
+        { "name": "Excluir", "request": { "method": "DELETE", "url": "{{base_url}}/history/{{history_id}}" } }
+      ]
+    },
+    {
+      "name": "Sessões",
+      "item": [
+        { "name": "Listar", "request": { "method": "GET", "url": "{{base_url}}/sessions?page=1&limit=20" } },
+        { "name": "Buscar por ID", "request": { "method": "GET", "url": "{{base_url}}/sessions/{{session_id}}" } },
+        { "name": "Listar do paciente", "request": { "method": "GET", "url": "{{base_url}}/patients/{{patient_id}}/sessions" } },
+        { "name": "Criar", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"patientId\": \"{{patient_id}}\",\n  \"appointmentId\": \"{{appointment_id}}\",\n  \"startsAt\": \"2026-06-22T14:00:00-03:00\",\n  \"endsAt\": \"2026-06-22T15:00:00-03:00\",\n  \"status\": \"scheduled\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/sessions" } },
+        { "name": "Atualizar", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"status\": \"completed\",\n  \"endsAt\": \"2026-06-22T15:00:00-03:00\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/sessions/{{session_id}}" } }
+      ]
+    },
+    {
+      "name": "Notas clínicas",
+      "item": [
+        { "name": "Listar da sessão", "request": { "method": "GET", "url": "{{base_url}}/sessions/{{session_id}}/notes" } },
+        { "name": "Criar", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"content\": \"Conteúdo clínico confidencial do atendimento.\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/sessions/{{session_id}}/notes" } },
+        { "name": "Atualizar", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"content\": \"Conteúdo clínico atualizado.\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/notes/{{note_id}}" } },
+        { "name": "Excluir", "request": { "method": "DELETE", "url": "{{base_url}}/notes/{{note_id}}" } }
+      ]
+    },
+    {
+      "name": "Pagamentos",
+      "item": [
+        { "name": "Listar", "request": { "method": "GET", "url": "{{base_url}}/payments?page=1&limit=20&status=pending" } },
+        { "name": "Buscar por ID", "request": { "method": "GET", "url": "{{base_url}}/payments/{{payment_id}}" } },
+        { "name": "Listar da sessão", "request": { "method": "GET", "url": "{{base_url}}/sessions/{{session_id}}/payments" } },
+        { "name": "Criar", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"sessionId\": \"{{session_id}}\",\n  \"amount\": \"250.00\",\n  \"status\": \"pending\",\n  \"dueAt\": \"2026-06-25T12:00:00-03:00\",\n  \"paymentMethod\": \"pix\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/payments" } },
+        { "name": "Atualizar", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"status\": \"paid\",\n  \"paidAt\": \"2026-06-23T10:30:00-03:00\",\n  \"paymentMethod\": \"pix\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/payments/{{payment_id}}" } }
+      ]
+    },
+    {
+      "name": "Consultas",
+      "item": [
+        { "name": "Listar", "request": { "method": "GET", "url": "{{base_url}}/consultations?page=1&limit=20" } },
+        { "name": "Buscar por ID", "request": { "method": "GET", "url": "{{base_url}}/consultations/{{consultation_id}}" } },
+        { "name": "Criar", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"patientId\": \"{{patient_id}}\",\n  \"title\": \"Avaliação médica\",\n  \"doctor\": \"Dr. Carlos\",\n  \"location\": \"Clínica Central\",\n  \"scheduledAt\": \"2026-07-01T09:00:00-03:00\",\n  \"status\": \"scheduled\",\n  \"diagnosis\": \"\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/consultations" } },
+        { "name": "Atualizar", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"status\": \"completed\",\n  \"diagnosis\": \"Diagnóstico informado pelo profissional.\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/consultations/{{consultation_id}}" } },
+        { "name": "Excluir", "request": { "method": "DELETE", "url": "{{base_url}}/consultations/{{consultation_id}}" } }
+      ]
+    },
+    {
+      "name": "Home",
+      "item": [
+        { "name": "Atividades", "request": { "method": "GET", "url": "{{base_url}}/home/activity?limit=10" } },
+        { "name": "Resumo", "request": { "method": "GET", "url": "{{base_url}}/home/summary" } }
+      ]
+    }
+  ]
+}
