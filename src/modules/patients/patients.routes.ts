@@ -7,6 +7,10 @@ import { prisma } from "../../database/prisma";
 export const patientsRoutes = Router();
 
 function patientData(body: Record<string, unknown>) {
+  if (body.isActive !== undefined && typeof body.isActive !== "boolean") {
+    throw new HttpError(400, "VALIDATION_ERROR", "isActive deve ser um valor booleano.", [{ field: "isActive", message: "Deve ser booleano" }]);
+  }
+
   return {
     name: body.nome === undefined ? body.name as string | undefined : String(body.nome).trim(),
     phone: body.telefone === undefined ? cleanDigits(body.phone) : cleanDigits(body.telefone),
@@ -22,6 +26,7 @@ function patientData(body: Record<string, unknown>) {
     street: (body.street ?? body.address) as string | undefined,
     addressNumber: (body.addressNumber ?? body.number) as string | undefined,
     complement: body.complement as string | undefined,
+    isActive: body.isActive as boolean | undefined,
   };
 }
 
@@ -61,9 +66,10 @@ patientsRoutes.post("/", asyncHandler(async (request, response) => {
 
 patientsRoutes.patch("/:id", asyncHandler(async (request, response) => {
   const ownerUserId = response.locals.user.id;
-  const current = await prisma.patient.findFirst({ where: { id: request.params.id, ownerUserId, deletedAt: null } });
+  const current = await prisma.patient.findFirst({ where: { id: request.params.id, deletedAt: null }, select: { id: true, ownerUserId: true } });
   if (!current) throw new HttpError(404, "PATIENT_NOT_FOUND", "Paciente não encontrado.");
-  const data = await prisma.patient.update({ where: { id: current.id }, data: patientData(request.body) });
+  if (current.ownerUserId !== ownerUserId) throw new HttpError(403, "FORBIDDEN", "Acesso negado.");
+  const data = await prisma.patient.update({ where: { id: current.id, ownerUserId }, data: patientData(request.body) });
   response.json({ data });
 }));
 
