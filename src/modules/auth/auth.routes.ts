@@ -5,7 +5,7 @@ import { required } from "../../common/validation";
 import { supabase, supabaseAdmin } from "../../config/supabase";
 import { authenticate } from "../../middlewares/auth.middleware";
 import { prisma } from "../../database/prisma";
-import { registerRateLimit } from "../../middlewares/register-rate-limit.middleware";
+import { forgotPasswordRateLimit, loginRateLimit, registerRateLimit } from "../../middlewares/register-rate-limit.middleware";
 import { validateRegister } from "./register.validation";
 
 export const authRoutes = Router();
@@ -52,7 +52,7 @@ authRoutes.post("/register", registerRateLimit, asyncHandler(async (request, res
   } });
 }));
 
-authRoutes.post("/login", asyncHandler(async (request, response) => {
+authRoutes.post("/login", loginRateLimit, asyncHandler(async (request, response) => {
   required(request.body, ["email", "password"]);
   const { data, error } = await supabase.auth.signInWithPassword({
     email: String(request.body.email).trim().toLowerCase(), password: String(request.body.password),
@@ -60,9 +60,11 @@ authRoutes.post("/login", asyncHandler(async (request, response) => {
   if (error || !data.session) throw new HttpError(401, "INVALID_CREDENTIALS", "Email ou senha inválidos.");
   const profile = await prisma.user.findUnique({ where: { id: data.user.id } });
   if (!profile?.isActive || profile.deletedAt) throw new HttpError(401, "INVALID_CREDENTIALS", "Email ou senha inválidos.");
+  const expiresAt = new Date(Date.now() + data.session.expires_in * 1000).toISOString();
   response.json({ data: {
     accessToken: data.session.access_token, refreshToken: data.session.refresh_token,
     expiresIn: data.session.expires_in,
+    expiresAt,
     user: { id: data.user.id, name: profile?.name ?? data.user.user_metadata.name, email: data.user.email, role: profile?.role ?? "professional" },
   } });
 }));
@@ -71,7 +73,8 @@ authRoutes.post("/refresh", asyncHandler(async (request, response) => {
   required(request.body, ["refreshToken"]);
   const { data, error } = await supabase.auth.refreshSession({ refresh_token: String(request.body.refreshToken) });
   if (error || !data.session) throw new HttpError(401, "INVALID_REFRESH_TOKEN", "Refresh token inválido.");
-  response.json({ data: { accessToken: data.session.access_token, refreshToken: data.session.refresh_token, expiresIn: data.session.expires_in } });
+  const expiresAt = new Date(Date.now() + data.session.expires_in * 1000).toISOString();
+  response.json({ data: { accessToken: data.session.access_token, refreshToken: data.session.refresh_token, expiresIn: data.session.expires_in, expiresAt } });
 }));
 
 authRoutes.post("/logout", authenticate, asyncHandler(async (request, response) => {
@@ -88,7 +91,7 @@ authRoutes.get("/me", authenticate, asyncHandler(async (_request, response) => {
   response.json({ data: { ...profile, email: authUser.email } });
 }));
 
-authRoutes.post("/forgot-password", asyncHandler(async (request, response) => {
+authRoutes.post("/forgot-password", forgotPasswordRateLimit, asyncHandler(async (request, response) => {
   if (request.body.email) await supabase.auth.resetPasswordForEmail(String(request.body.email).trim().toLowerCase());
   response.json({ data: { message: "Se o email existir, as instruções de recuperação serão enviadas." } });
 }));
