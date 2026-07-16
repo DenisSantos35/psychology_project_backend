@@ -17,6 +17,7 @@ drop table if exists public.sessions cascade;
 drop table if exists public.patient_history cascade;
 drop table if exists public.appointments cascade;
 drop table if exists public.consultations cascade;
+drop table if exists public.patient_emergency_contacts cascade;
 drop table if exists public.patients cascade;
 drop table if exists public.audit_logs cascade;
 drop table if exists public.users cascade;
@@ -81,6 +82,20 @@ create unique index if not exists patients_owner_cpf_unique on public.patients(o
 alter table public.patients add column if not exists user_id uuid unique references public.users(id) on delete set null;
 create unique index if not exists patients_user_unique on public.patients(user_id) where user_id is not null;
 create index if not exists patients_email_active_idx on public.patients(lower(email)) where email is not null and deleted_at is null;
+
+create table if not exists public.patient_emergency_contacts (
+  id uuid primary key default gen_random_uuid(),
+  patient_id uuid not null references public.patients(id) on delete cascade,
+  name varchar(150) not null check (btrim(name) <> ''),
+  relationship varchar(80),
+  phone varchar(30) not null,
+  email varchar(254),
+  is_primary boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists patient_emergency_contacts_patient_idx on public.patient_emergency_contacts(patient_id);
+create unique index if not exists patient_emergency_contacts_primary_unique on public.patient_emergency_contacts(patient_id) where is_primary = true;
 
 create table if not exists public.password_resets (
   id uuid primary key default gen_random_uuid(),
@@ -161,7 +176,7 @@ create table if not exists public.audit_logs (
 create index if not exists audit_logs_owner_date_idx on public.audit_logs(owner_user_id,created_at desc);
 
 do $$ declare t text; begin
-  foreach t in array array['users','professional_profiles','patients','appointments','patient_history','sessions','clinical_notes','payments','consultations'] loop
+  foreach t in array array['users','professional_profiles','patients','patient_emergency_contacts','appointments','patient_history','sessions','clinical_notes','payments','consultations'] loop
     execute format('drop trigger if exists %I on public.%I','set_'||t||'_updated_at',t);
     execute format('create trigger %I before update on public.%I for each row execute function public.set_updated_at()','set_'||t||'_updated_at',t);
   end loop;
@@ -170,6 +185,7 @@ end $$;
 alter table public.users enable row level security;
 alter table public.professional_profiles enable row level security;
 alter table public.patients enable row level security;
+alter table public.patient_emergency_contacts enable row level security;
 alter table public.appointments enable row level security;
 alter table public.patient_history enable row level security;
 alter table public.sessions enable row level security;
@@ -185,6 +201,15 @@ do $$ declare t text; begin
     execute format('create policy owner_all on public.%I for all using (owner_user_id = auth.uid()) with check (owner_user_id = auth.uid())',t);
   end loop;
 end $$;
+drop policy if exists patient_emergency_contacts_owner_all on public.patient_emergency_contacts;
+create policy patient_emergency_contacts_owner_all on public.patient_emergency_contacts
+  for all
+  using (exists(select 1 from public.patients p where p.id = patient_id and p.owner_user_id = auth.uid()))
+  with check (exists(select 1 from public.patients p where p.id = patient_id and p.owner_user_id = auth.uid()));
+drop policy if exists patient_emergency_contacts_patient_select on public.patient_emergency_contacts;
+create policy patient_emergency_contacts_patient_select on public.patient_emergency_contacts
+  for select
+  using (exists(select 1 from public.patients p where p.id = patient_id and p.user_id = auth.uid()));
 drop policy if exists users_own_profile on public.users;
 create policy users_own_profile on public.users for select using(id = auth.uid());
 drop policy if exists professional_profiles_own_profile on public.professional_profiles;
