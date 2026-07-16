@@ -9,6 +9,22 @@ import { forgotPasswordRateLimit, loginRateLimit, registerRateLimit } from "../.
 import { validateRegister } from "./register.validation";
 
 export const authRoutes = Router();
+const resetPasswordRedirectTo = process.env.RESET_PASSWORD_URL ?? process.env.CLIENT_RESET_PASSWORD_URL;
+
+function getResetPasswordRedirectTo(body: Record<string, unknown>): string | undefined {
+  const value = body.redirect_to ?? body.redirect_url ?? body.redirectTo;
+  if (value === undefined || value === null || value === "") return resetPasswordRedirectTo;
+  const redirectTo = String(value).trim();
+
+  try {
+    const url = new URL(redirectTo);
+    if (!url.protocol) throw new Error("Missing protocol");
+  } catch {
+    throw new HttpError(400, "VALIDATION_ERROR", "Dados inválidos.", [{ field: "redirect_to", message: "URL de redirecionamento inválida" }]);
+  }
+
+  return redirectTo;
+}
 
 authRoutes.post("/register", registerRateLimit, asyncHandler(async (request, response) => {
   if (!supabaseAdmin) throw new HttpError(500, "INTERNAL_ERROR", "Cadastro profissional não configurado.");
@@ -92,6 +108,12 @@ authRoutes.get("/me", authenticate, asyncHandler(async (_request, response) => {
 }));
 
 authRoutes.post("/forgot-password", forgotPasswordRateLimit, asyncHandler(async (request, response) => {
-  if (request.body.email) await supabase.auth.resetPasswordForEmail(String(request.body.email).trim().toLowerCase());
+  if (request.body.email) {
+    const redirectTo = getResetPasswordRedirectTo(request.body);
+    await supabase.auth.resetPasswordForEmail(
+      String(request.body.email).trim().toLowerCase(),
+      redirectTo ? { redirectTo } : undefined,
+    );
+  }
   response.json({ data: { message: "Se o email existir, as instruções de recuperação serão enviadas." } });
 }));

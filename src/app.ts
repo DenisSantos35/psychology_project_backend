@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import { prisma } from "./database/prisma";
 import { authRoutes } from "./modules/auth/auth.routes";
+import { clientAuthRoutes } from "./modules/client-auth/client-auth.routes";
 import { authenticate } from "./middlewares/auth.middleware";
 import { errorHandler, notFound } from "./middlewares/error.middleware";
 import { appointmentsRoutes } from "./modules/appointments/appointments.routes";
@@ -38,6 +39,7 @@ app.get("/health/ready", async (_request, response) => {
 });
 
 app.use(`${apiPrefix}/auth`, authRoutes);
+app.use("/api/client/auth", clientAuthRoutes);
 app.use(`${apiPrefix}/users`, authenticate, usersRoutes);
 app.use(`${apiPrefix}/professional-profiles`, authenticate, professionalProfilesRoutes);
 app.use(`${apiPrefix}/patients`, authenticate, patientsRoutes);

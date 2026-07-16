@@ -32,9 +32,11 @@ create table if not exists public.users (
   plan varchar(50), role varchar(30) not null default 'professional',
   is_active boolean not null default true, deleted_at timestamptz,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
-  constraint users_role_check check (role in ('admin','professional'))
+  constraint users_role_check check (role in ('admin','professional','patient'))
 );
 create unique index if not exists users_email_active_unique on public.users(lower(email)) where deleted_at is null;
+alter table public.users drop constraint if exists users_role_check;
+alter table public.users add constraint users_role_check check (role in ('admin','professional','patient'));
 
 create or replace function public.handle_new_auth_user() returns trigger
 language plpgsql security definer set search_path = '' as $$
@@ -65,6 +67,7 @@ alter table public.professional_profiles add column if not exists avatar_url tex
 
 create table if not exists public.patients (
   id uuid primary key default gen_random_uuid(), owner_user_id uuid not null references public.users(id) on delete cascade,
+  user_id uuid unique references public.users(id) on delete set null,
   name varchar(150) not null, phone varchar(30) not null, email varchar(254), status varchar(20) not null default 'active',
   cpf varchar(14), date_of_birth date, gender varchar(30), avatar_url text, cep varchar(9), city varchar(100),
   neighborhood varchar(100), state_code char(2), street varchar(150), address_number varchar(20), complement varchar(100),
@@ -75,6 +78,19 @@ create table if not exists public.patients (
 create index if not exists patients_owner_status_idx on public.patients(owner_user_id,status);
 create index if not exists patients_owner_name_idx on public.patients(owner_user_id,name);
 create unique index if not exists patients_owner_cpf_unique on public.patients(owner_user_id,cpf) where cpf is not null and deleted_at is null;
+alter table public.patients add column if not exists user_id uuid unique references public.users(id) on delete set null;
+create unique index if not exists patients_user_unique on public.patients(user_id) where user_id is not null;
+create index if not exists patients_email_active_idx on public.patients(lower(email)) where email is not null and deleted_at is null;
+
+create table if not exists public.password_resets (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.users(id) on delete cascade,
+  token_hash text not null,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists password_resets_user_expires_idx on public.password_resets(user_id, expires_at desc);
 
 create table if not exists public.appointments (
   id uuid primary key default gen_random_uuid(), owner_user_id uuid not null references public.users(id) on delete cascade,
