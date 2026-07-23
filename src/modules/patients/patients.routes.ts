@@ -6,6 +6,13 @@ import { prisma } from "../../database/prisma";
 
 export const patientsRoutes = Router();
 
+type EmergencyContactRow = {
+  id: string;
+  name: string;
+  relationship: string | null;
+  phone: string;
+};
+
 function patientData(body: Record<string, unknown>) {
   if (body.isActive !== undefined && typeof body.isActive !== "boolean") {
     throw new HttpError(400, "VALIDATION_ERROR", "isActive deve ser um valor booleano.", [{ field: "isActive", message: "Deve ser booleano" }]);
@@ -53,7 +60,25 @@ patientsRoutes.get("/", asyncHandler(listPatients));
 patientsRoutes.get("/:id", asyncHandler(async (request, response) => {
   const data = await prisma.patient.findFirst({ where: { id: request.params.id, ownerUserId: response.locals.user.id, deletedAt: null } });
   if (!data) throw new HttpError(404, "PATIENT_NOT_FOUND", "Paciente não encontrado.");
-  response.json({ data: { ...data, userId: data.ownerUserId, nome: data.name, telefone: data.phone, stateOfCountry: data.stateCode, address: data.street, number: data.addressNumber } });
+  const emergencyContacts = await prisma.$queryRaw<EmergencyContactRow[]>`
+    select id, name, relationship, phone
+    from patient_emergency_contacts
+    where patient_id = ${data.id}::uuid
+    order by is_primary desc, created_at desc
+  `;
+
+  response.json({
+    data: {
+      ...data,
+      userId: data.ownerUserId,
+      nome: data.name,
+      telefone: data.phone,
+      stateOfCountry: data.stateCode,
+      address: data.street,
+      number: data.addressNumber,
+      emergency_contacts: emergencyContacts,
+    },
+  });
 }));
 
 patientsRoutes.post("/", asyncHandler(async (request, response) => {

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { Prisma } from "../../generated/prisma/client";
 import { asyncHandler } from "../../common/async-handler";
 import { HttpError } from "../../common/http-error";
 import { required } from "../../common/validation";
@@ -36,6 +37,27 @@ type EmergencyContactRow = {
   phone: string;
 };
 
+type ClientProfileResponse = {
+  id: string;
+  patient_code: string;
+  plan_name: string | null;
+  full_name: string;
+  email: string | null;
+  birth_date: string | null;
+  gender: string | null;
+  cpf_masked: string | null;
+  address: {
+    zip_code: string | null;
+    street: string | null;
+    number: string | null;
+    district: string | null;
+    city: string | null;
+    state: string | null;
+    complement: string | null;
+  };
+  emergency_contacts: EmergencyContactRow[];
+};
+
 function formatDate(value: Date | string | null): string | null {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -61,6 +83,63 @@ function validateEmergencyContact(body: Record<string, unknown>) {
     relationship: String(body.relationship).trim(),
     phone: String(body.phone).trim(),
   };
+}
+
+function optionalText(body: Record<string, unknown>, field: string): string | undefined {
+  if (!(field in body)) return undefined;
+  return typeof body[field] === "string" ? body[field].trim() : "";
+}
+
+function validateClientProfileUpdate(body: Record<string, unknown>) {
+  const allowed = new Set(["full_name", "email", "birth_date", "gender", "address"]);
+  const unknown = Object.keys(body).filter((field) => !allowed.has(field));
+  if (unknown.length) {
+    throw new HttpError(400, "VALIDATION_ERROR", "Dados invalidos.", unknown.map((field) => ({ field, message: "Campo desconhecido" })));
+  }
+
+  const address = body.address && typeof body.address === "object" && !Array.isArray(body.address) ? body.address as Record<string, unknown> : undefined;
+  if ("address" in body && !address) {
+    throw new HttpError(400, "VALIDATION_ERROR", "Dados invalidos.", [{ field: "address", message: "Endereco invalido" }]);
+  }
+
+  const allowedAddress = new Set(["zip_code", "street", "number", "district", "city", "state", "complement"]);
+  const invalidAddress = address ? Object.keys(address).filter((field) => !allowedAddress.has(field)) : [];
+  if (invalidAddress.length) {
+    throw new HttpError(400, "VALIDATION_ERROR", "Dados invalidos.", invalidAddress.map((field) => ({ field: `address.${field}`, message: "Campo desconhecido" })));
+  }
+
+  const fullName = optionalText(body, "full_name");
+  const email = optionalText(body, "email")?.toLowerCase();
+  const birthDateText = optionalText(body, "birth_date");
+  const gender = optionalText(body, "gender");
+  const zipCode = address && "zip_code" in address ? String(address.zip_code ?? "").trim() : undefined;
+  const street = address ? optionalText(address, "street") : undefined;
+  const number = address ? optionalText(address, "number") : undefined;
+  const district = address ? optionalText(address, "district") : undefined;
+  const city = address ? optionalText(address, "city") : undefined;
+  const state = address && "state" in address ? String(address.state ?? "").trim().toUpperCase() : undefined;
+  const complement = address && "complement" in address ? String(address.complement ?? "").trim() || null : undefined;
+
+  const errors: Array<{ field: string; message: string }> = [];
+  for (const [field, current] of Object.entries({ full_name: fullName, email, birth_date: birthDateText, gender })) {
+    if (current === "") errors.push({ field, message: "Nao pode ser vazio" });
+  }
+  for (const [field, current] of Object.entries({ zip_code: zipCode, street, number, district, city, state })) {
+    if (current === "") errors.push({ field: `address.${field}`, message: "Nao pode ser vazio" });
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push({ field: "email", message: "E-mail invalido" });
+  if (state && !/^[A-Z]{2}$/.test(state)) errors.push({ field: "address.state", message: "UF invalida" });
+
+  let birthDate: Date | undefined;
+  if (birthDateText) {
+    birthDate = /^\d{4}-\d{2}-\d{2}$/.test(birthDateText) ? new Date(`${birthDateText}T00:00:00.000Z`) : undefined;
+    if (!birthDate || Number.isNaN(birthDate.getTime()) || birthDate.toISOString().slice(0, 10) !== birthDateText || birthDate > new Date()) {
+      errors.push({ field: "birth_date", message: "Data invalida ou futura" });
+    }
+  }
+  if (errors.length) throw new HttpError(400, "VALIDATION_ERROR", "Dados invalidos.", errors);
+
+  return { fullName, email, birthDate, gender, zipCode, street, number, district, city, state, complement };
 }
 
 async function getAuthenticatedPatientProfile(userId: string): Promise<ClientProfileRow> {
@@ -117,11 +196,10 @@ async function listEmergencyContacts(patientId: string): Promise<EmergencyContac
   `;
 }
 
-clientProfileRoutes.get("/", asyncHandler(async (_request, response) => {
-  const profile = await getAuthenticatedPatientProfile(response.locals.user.id);
+async function buildClientProfileResponse(profile: ClientProfileRow): Promise<ClientProfileResponse> {
   const emergencyContacts = await listEmergencyContacts(profile.id);
 
-  response.json({
+  return {
     id: profile.id,
     patient_code: patientCode(profile.id),
     plan_name: profile.plan_name,
@@ -140,6 +218,61 @@ clientProfileRoutes.get("/", asyncHandler(async (_request, response) => {
       complement: profile.complement,
     },
     emergency_contacts: emergencyContacts,
+  };
+}
+
+clientProfileRoutes.get("/", asyncHandler(async (_request, response) => {
+  const profile = await getAuthenticatedPatientProfile(response.locals.user.id);
+  response.json(await buildClientProfileResponse(profile));
+}));
+
+clientProfileRoutes.patch("/", asyncHandler(async (request, response) => {
+  const userId = response.locals.user.id as string;
+  const currentProfile = await getAuthenticatedPatientProfile(userId);
+  const input = validateClientProfileUpdate(request.body);
+  const userUpdates: Prisma.Sql[] = [];
+  const patientUpdates: Prisma.Sql[] = [];
+
+  if (input.fullName !== undefined) {
+    userUpdates.push(Prisma.sql`name = ${input.fullName}`);
+    patientUpdates.push(Prisma.sql`name = ${input.fullName}`);
+  }
+  if (input.email !== undefined) {
+    userUpdates.push(Prisma.sql`email = ${input.email}`);
+    patientUpdates.push(Prisma.sql`email = ${input.email}`);
+  }
+  if (input.birthDate !== undefined) patientUpdates.push(Prisma.sql`date_of_birth = ${input.birthDate}`);
+  if (input.gender !== undefined) patientUpdates.push(Prisma.sql`gender = ${input.gender}`);
+  if (input.zipCode !== undefined) patientUpdates.push(Prisma.sql`cep = ${input.zipCode}`);
+  if (input.street !== undefined) patientUpdates.push(Prisma.sql`street = ${input.street}`);
+  if (input.number !== undefined) patientUpdates.push(Prisma.sql`address_number = ${input.number}`);
+  if (input.district !== undefined) patientUpdates.push(Prisma.sql`neighborhood = ${input.district}`);
+  if (input.city !== undefined) patientUpdates.push(Prisma.sql`city = ${input.city}`);
+  if (input.state !== undefined) patientUpdates.push(Prisma.sql`state_code = ${input.state}`);
+  if (input.complement !== undefined) patientUpdates.push(Prisma.sql`complement = ${input.complement}`);
+
+  if (input.email) {
+    const conflicts = await prisma.$queryRaw<Array<{ email: boolean }>>`
+      select exists(select 1 from users where lower(email) = ${input.email} and id <> ${userId}::uuid and deleted_at is null) as email
+    `;
+    if (conflicts[0]?.email) throw new HttpError(409, "EMAIL_ALREADY_EXISTS", "Ja existe uma conta com este e-mail.");
+  }
+
+  if (userUpdates.length || patientUpdates.length) {
+    await prisma.$transaction(async (transaction) => {
+      if (userUpdates.length) {
+        await transaction.$executeRaw(Prisma.sql`update users set ${Prisma.join(userUpdates)}, updated_at = now() where id = ${userId}::uuid`);
+      }
+      if (patientUpdates.length) {
+        await transaction.$executeRaw(Prisma.sql`update patients set ${Prisma.join(patientUpdates)}, updated_at = now() where id = ${currentProfile.id}::uuid and user_id = ${userId}::uuid`);
+      }
+    });
+  }
+
+  const updatedProfile = await getAuthenticatedPatientProfile(userId);
+  response.json({
+    message: "Perfil atualizado",
+    profile: await buildClientProfileResponse(updatedProfile),
   });
 }));
 
