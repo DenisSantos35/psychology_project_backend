@@ -70,8 +70,15 @@ authRoutes.post("/register", registerRateLimit, asyncHandler(async (request, res
 
 authRoutes.post("/login", loginRateLimit, asyncHandler(async (request, response) => {
   required(request.body, ["email", "password"]);
+  const email = String(request.body.email).trim().toLowerCase();
+  console.log("[AUTH_LOGIN] endpoint hit", {
+    email,
+    ip: request.ip,
+    userAgent: request.headers["user-agent"],
+    at: new Date().toISOString(),
+  });
   const { data, error } = await supabase.auth.signInWithPassword({
-    email: String(request.body.email).trim().toLowerCase(), password: String(request.body.password),
+    email, password: String(request.body.password),
   });
   if (error || !data.session) throw new HttpError(401, "INVALID_CREDENTIALS", "Email ou senha inválidos.");
   const profile = await prisma.user.findUnique({ where: { id: data.user.id } });

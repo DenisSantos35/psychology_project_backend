@@ -182,6 +182,12 @@ clientAuthRoutes.post("/login", loginRateLimit, asyncHandler(async (request, res
   required(request.body, ["email", "password"]);
   const email = normalizeEmail(request.body.email);
   validateEmail(email);
+  console.log("[CLIENT_AUTH_LOGIN] endpoint hit", {
+    email,
+    ip: request.ip,
+    userAgent: request.headers["user-agent"],
+    at: new Date().toISOString(),
+  });
 
   const { data, error } = await supabase.auth.signInWithPassword({
     email,

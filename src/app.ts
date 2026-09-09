@@ -3,6 +3,8 @@ import express from "express";
 import { prisma } from "./database/prisma";
 import { authRoutes } from "./modules/auth/auth.routes";
 import { clientAuthRoutes } from "./modules/client-auth/client-auth.routes";
+import { clientDoctorsRoutes } from "./modules/client-doctors/client-doctors.routes";
+import { clientHealthHistoryRoutes } from "./modules/client-health-history/client-health-history.routes";
 import { clientProfileRoutes } from "./modules/client-profile/client-profile.routes";
 import { authenticate } from "./middlewares/auth.middleware";
 import { errorHandler, notFound } from "./middlewares/error.middleware";
@@ -41,6 +43,8 @@ app.get("/health/ready", async (_request, response) => {
 
 app.use(`${apiPrefix}/auth`, authRoutes);
 app.use("/api/client/auth", clientAuthRoutes);
+app.use("/api/client/doctors", authenticate, clientDoctorsRoutes);
+app.use("/api/client/health-history", authenticate, clientHealthHistoryRoutes);
 app.use("/api/client/profile", authenticate, clientProfileRoutes);
 app.use(`${apiPrefix}/users`, authenticate, usersRoutes);
 app.use(`${apiPrefix}/professional-profiles`, authenticate, professionalProfilesRoutes);
