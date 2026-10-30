@@ -22,6 +22,7 @@ type HealthHistoryRow = {
 };
 
 type HealthHistoryDetailRow = {
+  type: string;
   id: string;
   status: string;
   title: string;
@@ -70,30 +71,81 @@ function healthHistorySql(userId: string) {
         and p.deleted_at is null
       limit 1
     ),
+    appointment_sources as (
+      select
+        a.id,
+        'appointment'::text as type,
+        a.starts_at as occurred_at,
+        case
+          when a.description ilike '%retorno%'
+            or a.description ilike '%retono%'
+            or a.description ilike '%acompanhamento%'
+          then 'Retorno'
+          else coalesce(nullif(a.description, ''), 'Consulta de rotina')
+        end as title,
+        ap.professional_name,
+        ap.specialty,
+        a.status,
+        case a.status when 'cancelled' then 14 when 'completed' then 13 when 'confirmed' then 12 else 11 end as status_priority
+      from appointments a
+      join authenticated_patient ap on ap.patient_id = a.patient_id and ap.owner_user_id = a.owner_user_id
+      where a.status in ('pending', 'confirmed', 'completed', 'cancelled')
+
+      union all
+
+      select
+        h.id,
+        'appointment'::text as type,
+        h.occurred_at,
+        'Retorno'::text as title,
+        coalesce(nullif(h.professional_name, ''), ap.professional_name) as professional_name,
+        ap.specialty,
+        'completed'::text as status,
+        3 as status_priority
+      from patient_history h
+      join authenticated_patient ap on ap.patient_id = h.patient_id and ap.owner_user_id = h.owner_user_id
+      where h.status in ('completed', 'concluido')
+        and h.title ilike '%retorno%'
+    ),
+    appointment_items as (
+      select distinct on (date_trunc('minute', occurred_at), professional_name)
+        id,
+        type,
+        occurred_at,
+        title,
+        professional_name,
+        specialty,
+        status
+      from appointment_sources
+      order by date_trunc('minute', occurred_at), professional_name, status_priority desc, occurred_at desc
+    ),
     items as (
+      select
+        id,
+        type,
+        occurred_at,
+        title,
+        professional_name,
+        specialty,
+        status
+      from appointment_items
+
+      union all
+
       select
         h.id,
         'history'::text as type,
         h.occurred_at,
         h.title,
-        h.professional_name,
+        coalesce(nullif(h.professional_name, ''), ap.professional_name) as professional_name,
         ap.specialty,
         h.status
       from patient_history h
       join authenticated_patient ap on ap.patient_id = h.patient_id and ap.owner_user_id = h.owner_user_id
-
-      union all
-
-      select
-        a.id,
-        'appointment'::text as type,
-        a.starts_at as occurred_at,
-        coalesce(nullif(a.description, ''), 'Consulta agendada') as title,
-        ap.professional_name,
-        ap.specialty,
-        a.status
-      from appointments a
-      join authenticated_patient ap on ap.patient_id = a.patient_id and ap.owner_user_id = a.owner_user_id
+      where not (
+        h.status in ('completed', 'concluido')
+        and h.title ilike '%retorno%'
+      )
 
       union all
 
@@ -107,6 +159,11 @@ function healthHistorySql(userId: string) {
         s.status
       from sessions s
       join authenticated_patient ap on ap.patient_id = s.patient_id and ap.owner_user_id = s.owner_user_id
+      where not exists (
+        select 1
+        from appointment_items ai
+        where date_trunc('minute', ai.occurred_at) = date_trunc('minute', s.starts_at)
+      )
 
       union all
 
@@ -120,6 +177,11 @@ function healthHistorySql(userId: string) {
         c.status
       from consultations c
       join authenticated_patient ap on ap.patient_id = c.patient_id and ap.owner_user_id = c.owner_user_id
+      where not exists (
+        select 1
+        from appointment_items ai
+        where date_trunc('minute', ai.occurred_at) = date_trunc('minute', c.scheduled_at)
+      )
 
       union all
 
@@ -150,7 +212,6 @@ function healthHistorySql(userId: string) {
   `;
 }
 
-
 function splitDescription(value: string): string[] {
   return value
     .split(/\r?\n+/)
@@ -162,7 +223,33 @@ clientHealthHistoryRoutes.get("/:historyId", asyncHandler(async (request, respon
   const userId = response.locals.user.id as string;
   const rows = await prisma.$queryRaw<HealthHistoryDetailRow[]>`
     select
+      a.id,
+      'appointment'::text as type,
+      a.status,
+      'Retorno'::text as title,
+      to_char(a.starts_at at time zone 'America/Sao_Paulo', 'YYYY-MM-DD') as date,
+      to_char(a.starts_at at time zone 'America/Sao_Paulo', 'HH24:MI') as time,
+      a.description,
+      owner.id as professional_id,
+      coalesce(nullif(owner.name, ''), 'Profissional') as professional_name,
+      pp.specialty,
+      pp.professional_license as license,
+      null::text as workplace,
+      pp.avatar_url
+    from appointments a
+    join patients p on p.id = a.patient_id and p.owner_user_id = a.owner_user_id
+    join users owner on owner.id = a.owner_user_id
+    left join professional_profiles pp on pp.user_id = a.owner_user_id
+    where a.id = ${request.params.historyId}::uuid
+      and p.user_id = ${userId}::uuid
+      and p.is_active = true
+      and p.deleted_at is null
+
+    union all
+
+    select
       h.id,
+      'history'::text as type,
       h.status,
       h.title,
       to_char(h.occurred_at at time zone 'America/Sao_Paulo', 'YYYY-MM-DD') as date,
@@ -184,16 +271,17 @@ clientHealthHistoryRoutes.get("/:historyId", asyncHandler(async (request, respon
       and p.deleted_at is null
     limit 1
   `;
-
   const item = rows[0];
   if (!item) throw new HttpError(404, "HEALTH_HISTORY_NOT_FOUND", "Historico nao encontrado.");
 
   response.json({
     id: item.id,
+    type: item.type,
     status: item.status,
     title: item.title,
     date: item.date,
     time: item.time,
+    description: item.description,
     professional: {
       id: item.professional_id,
       name: item.professional_name,
@@ -203,8 +291,8 @@ clientHealthHistoryRoutes.get("/:historyId", asyncHandler(async (request, respon
       avatar_url: item.avatar_url,
     },
     diagnosis_notes: {
-      description: splitDescription(item.description),
-      important_note: null,
+      description: item.type === "appointment" ? [item.description] : splitDescription(item.description),
+      important_note: "",
     },
     prescriptions: [],
     documents: [],
@@ -223,7 +311,22 @@ clientHealthHistoryRoutes.get("/", asyncHandler(async (request, response) => {
     offset ${offset}
   `);
 
-  const items = rows.slice(0, perPage).map(({ occurred_at: _occurredAt, ...item }) => item);
+  const items = rows.slice(0, perPage).map(({ occurred_at: _occurredAt, subtitle: _subtitle, ...item }) => {
+    if (item.type === "appointment") {
+      return {
+        id: item.id,
+        type: item.type,
+        title: item.title,
+        date: item.date,
+        time: item.time,
+        status: item.status,
+        professional_name: item.professional_name,
+        specialty: item.specialty,
+      };
+    }
+
+    return { ...item, subtitle: _subtitle };
+  });
   response.json({
     items,
     pagination: {

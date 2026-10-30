@@ -7,7 +7,7 @@ export function notFound(request: Request, _response: Response, next: NextFuncti
   next(new HttpError(404, "ROUTE_NOT_FOUND", `Rota ${request.method} ${request.path} não encontrada.`));
 }
 
-export function errorHandler(error: unknown, _request: Request, response: Response, _next: NextFunction): void {
+export function errorHandler(error: unknown, request: Request, response: Response, _next: NextFunction): void {
   const requestId = randomUUID();
   if (error instanceof HttpError) {
     response.status(error.status).json({ error: { code: error.code, message: error.message, details: error.details, requestId } });

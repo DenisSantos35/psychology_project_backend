@@ -166,6 +166,8 @@ create table if not exists public.consultations (
 );
 create index if not exists consultations_owner_date_status_idx on public.consultations(owner_user_id,scheduled_at,status);
 
+
+
 create table if not exists public.audit_logs (
   id uuid primary key default gen_random_uuid(), owner_user_id uuid, actor_user_id uuid,
   entity_type varchar(50), action varchar(30) not null, entity_id uuid,
